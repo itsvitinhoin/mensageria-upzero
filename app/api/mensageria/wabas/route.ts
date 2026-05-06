@@ -1,0 +1,35 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { listWabas } from '@/lib/whatsapp/provider'
+import { addLog, getState, maskId, updateState } from '@/lib/whatsapp/store'
+
+export const dynamic = 'force-dynamic'
+
+export async function GET(req: NextRequest) {
+  const state = getState()
+  const businessId = new URL(req.url).searchParams.get('businessId') ?? state.integration.businessId
+
+  if (!businessId) {
+    return NextResponse.json({ data: state.wabas, error: { message: 'No Business selected.' }, source: 'local' })
+  }
+
+  const result = await listWabas(businessId)
+
+  if (!result.ok) {
+    addLog({
+      type: 'waba_loaded',
+      status: 'failed',
+      description: 'Failed: WhatsApp Business Accounts could not be loaded from Meta.',
+      safePayload: { businessId: maskId(businessId) },
+      error: result.error,
+      recommendedAction: result.error?.action,
+    })
+    return NextResponse.json({ data: state.wabas, error: result.error, source: 'local' })
+  }
+
+  updateState((next) => {
+    next.wabas = result.data ?? []
+    next.integration.lastSyncAt = new Date().toISOString()
+  })
+  addLog({ type: 'waba_loaded', status: 'success', description: 'WABAs loaded from Meta.', safePayload: { businessId: maskId(businessId), count: result.data?.length ?? 0 } })
+  return NextResponse.json({ data: result.data ?? [], source: 'meta' })
+}

@@ -7,6 +7,10 @@ export default async function AdminLoginPage() {
   const adminToken = cookieStore.get('adminAuthToken')?.value
   const base = process.env.NEXT_PUBLIC_RUST_URL
 
+  if (adminToken && !base) {
+    redirect('/mensageria')
+  }
+
   if (adminToken && base) {
     const res = await fetch(new URL('/admin/me', base), {
       headers: {
@@ -16,7 +20,7 @@ export default async function AdminLoginPage() {
     })
 
     if (res.ok) {
-      redirect('/')
+      redirect('/mensageria')
     }
   }
 

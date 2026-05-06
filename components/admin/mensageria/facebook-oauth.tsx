@@ -16,11 +16,11 @@ import type { WabaVerifyResult } from '@/app/api/mensageria/connections/verify-w
 // in App Review for production traffic.
 
 const REQUIRED_SCOPES = [
+  'public_profile',
+  'email',
   'business_management',
   'whatsapp_business_management',
   'whatsapp_business_messaging',
-  'manage_app_solution',
-  'whatsapp_business_manage_events',
 ]
 
 // ─── Timeline types ───────────────────────────────────────────────────────────
@@ -98,6 +98,8 @@ export interface WaOAuthCredentials {
   onboardingType: WaOnboardingType
   /** Raw platform_type from Meta phone number API */
   platformType?: string
+  /** Sanitized scopes returned by /debug_token when available. No token value is exposed. */
+  grantedPermissions?: string[]
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -127,7 +129,7 @@ export function FacebookOAuthButton({ onSuccess, isReconnect = false, className 
   const addStepRef = useRef<(
     stepNum: number, title: string, status: TimelineStatus,
     details?: Record<string, string | boolean | null>
-  ) => void>()
+  ) => void>(undefined)
 
   addStepRef.current = (stepNum, title, status, details) => {
     const entry: TimelineEntry = {
@@ -287,9 +289,10 @@ export function FacebookOAuthButton({ onSuccess, isReconnect = false, className 
             phoneNumberId: '',
             phoneNumber: '',
             verifiedName: result.confirmedWaba?.name ?? '',
-            businessId: info.business_id,
-            onboardingType: 'new_number',
-          })
+          businessId: info.business_id,
+          onboardingType: 'new_number',
+          grantedPermissions: result.tokenDiag?.grantedScopes ?? [],
+        })
           setStep('phone-pending')
           return
         }
@@ -315,6 +318,7 @@ export function FacebookOAuthButton({ onSuccess, isReconnect = false, className 
           businessId: info.business_id,
           onboardingType,
           platformType: result.phoneDetails?.platformType,
+          grantedPermissions: result.tokenDiag?.grantedScopes ?? [],
         }
 
         if (onboardingType === 'existing_app_number' || onboardingType === 'migration_required') {
@@ -392,7 +396,7 @@ export function FacebookOAuthButton({ onSuccess, isReconnect = false, className 
     })
 
     // Step 2: Embedded Signup popup will open
-    addStep(2, 'Embedded Signup aberto', 'info', null)
+    addStep(2, 'Embedded Signup aberto', 'info')
 
     console.log('[FacebookOAuth] FB.login called:', { appId, configId })
 
@@ -553,7 +557,7 @@ export function FacebookOAuthButton({ onSuccess, isReconnect = false, className 
         )}
         {step === 'authenticating' ? 'Aguardando Embedded Signup...' :
          step === 'verifying' ? 'Verificando conta WhatsApp...' :
-         isReconnect ? 'Reconectar com Facebook' : 'Conectar com Facebook'}
+         isReconnect ? 'Reconnect Meta' : 'Continue with Meta'}
       </Button>
 
       {step === 'error' && (
@@ -1044,11 +1048,11 @@ function VerifyDiagnosticPanel({
               <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Escopos</div>
               <div className="space-y-0.5 font-mono text-[10px]">
                 <div className="text-[9px] uppercase tracking-wide text-muted-foreground mb-1">Solicitados / Concedidos</div>
+                <ScopeRow label="public_profile" granted={td.grantedScopes.includes('public_profile')} />
+                <ScopeRow label="email" granted={td.grantedScopes.includes('email')} />
                 <ScopeRow label="business_management" granted={td.hasBusinessManagement} note={!td.hasBusinessManagement ? 'Advanced Access required' : undefined} />
                 <ScopeRow label="whatsapp_business_management" granted={td.hasWhatsappManagement} />
                 <ScopeRow label="whatsapp_business_messaging" granted={td.hasWhatsappMessaging} />
-                <ScopeRow label="manage_app_solution" granted={td.hasManageAppSolution ?? false} />
-                <ScopeRow label="whatsapp_business_manage_events" granted={td.hasWabaManageEvents ?? false} />
               </div>
               {td.grantedScopes.length > 0 && (
                 <div className="mt-1">

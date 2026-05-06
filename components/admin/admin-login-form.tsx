@@ -16,11 +16,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 
 const adminLoginSchema = z.object({
   email: z
-    .string({ required_error: 'E-mail é obrigatório' })
+    .string()
     .min(1, 'E-mail é obrigatório')
     .email('Digite um e-mail válido'),
   password: z
-    .string({ required_error: 'Senha é obrigatória' })
+    .string()
     .min(1, 'Senha é obrigatória')
     .min(6, 'A senha deve ter no mínimo 6 caracteres'),
 })
@@ -48,7 +48,7 @@ export default function AdminLoginForm() {
   // Navega para /admin quando login for bem-sucedido
   useEffect(() => {
     if (state?.success) {
-      router.push('/')
+      router.push('/mensageria')
       return
     }
 
@@ -82,8 +82,8 @@ export default function AdminLoginForm() {
               priority
             />
           </div>
-          <CardTitle className="text-lg font-medium">Admin</CardTitle>
-          <CardDescription>Acesse o painel administrativo</CardDescription>
+          <CardTitle className="text-lg font-medium">Mensageria</CardTitle>
+          <CardDescription>Acesse a operacao WhatsApp Business</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} noValidate className="space-y-4">

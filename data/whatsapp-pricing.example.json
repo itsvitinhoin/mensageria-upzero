@@ -1,0 +1,13 @@
+{
+  "disclaimer": "Final charges are determined by Meta. This is an estimate based on the configured rate card.",
+  "notes": [
+    "Values below are zero placeholders. Configure WHATSAPP_PRICING_FILE with your reviewed rate card or enter unit cost in the UI.",
+    "Do not treat this file as Meta's final public pricing."
+  ],
+  "rates": [
+    { "country": "BR", "currency": "USD", "category": "Marketing", "unitCost": 0, "source": "example" },
+    { "country": "BR", "currency": "USD", "category": "Utility", "unitCost": 0, "source": "example" },
+    { "country": "BR", "currency": "USD", "category": "Authentication", "unitCost": 0, "source": "example" },
+    { "country": "BR", "currency": "USD", "category": "Service", "unitCost": 0, "source": "example" }
+  ]
+}

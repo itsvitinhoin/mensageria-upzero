@@ -111,8 +111,6 @@ export interface WabaVerifyResult {
     hasWhatsappManagement: boolean
     hasBusinessManagement: boolean
     hasWhatsappMessaging: boolean
-    hasManageAppSolution: boolean
-    hasWabaManageEvents: boolean
     hasAdvancedAccess: boolean
   }
   /** WABA confirmed from client_whatsapp_business_accounts or Embedded Signup payload */
@@ -198,11 +196,11 @@ export async function POST(req: NextRequest): Promise<NextResponse<WabaVerifyRes
 
   const steps: WabaVerifyResult['steps'] = []
   const requiredScopes = [
+    'public_profile',
+    'email',
     'business_management',
     'whatsapp_business_management',
     'whatsapp_business_messaging',
-    'manage_app_solution',
-    'whatsapp_business_manage_events',
   ]
 
   console.log('[verify-waba] incoming request:', {
@@ -294,8 +292,6 @@ export async function POST(req: NextRequest): Promise<NextResponse<WabaVerifyRes
         hasWhatsappManagement: grantedScopes.includes('whatsapp_business_management'),
         hasBusinessManagement: grantedScopes.includes('business_management'),
         hasWhatsappMessaging: grantedScopes.includes('whatsapp_business_messaging'),
-        hasManageAppSolution: grantedScopes.includes('manage_app_solution'),
-        hasWabaManageEvents: grantedScopes.includes('whatsapp_business_manage_events'),
         hasAdvancedAccess: false,
       }
 
