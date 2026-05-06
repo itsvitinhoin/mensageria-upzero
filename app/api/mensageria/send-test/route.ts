@@ -5,6 +5,17 @@ import { addInboxMessage, addLog, createId, getState, maskId, maskPhone, updateI
 
 export const dynamic = 'force-dynamic'
 
+function recommendedSendAction(error?: { message?: string; action?: string } | string): string {
+  const message = typeof error === 'string' ? error : error?.message ?? ''
+  if (/recipient|allowed|phone number list|not.*registered|not.*valid|not.*whatsapp/i.test(message)) {
+    return 'If you are using the Meta test sender number, add and verify this recipient in Meta Developers > WhatsApp > API Setup > Manage phone number list. For unrestricted real recipients, connect a real WhatsApp Business phone number in the WABA and use an approved template with opt-in.'
+  }
+
+  return typeof error === 'object' && error?.action
+    ? error.action
+    : 'Check phone number, template status, opt-in and Meta permissions.'
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({})) as {
     recipientPhone?: string
@@ -52,15 +63,16 @@ export async function POST(req: NextRequest) {
   })
 
   if (!result.ok) {
+    const action = recommendedSendAction(result.error)
     addLog({
       type: 'message_sent',
       status: 'failed',
       description: 'Failed: Meta did not accept the test WhatsApp message.',
       safePayload: { recipient: maskPhone(recipient), template: template.name },
       error: result.error,
-      recommendedAction: result.error?.action ?? 'Check phone number, template status, opt-in and Meta permissions.',
+      recommendedAction: action,
     })
-    return NextResponse.json({ ok: false, error: result.error, preview }, { status: 200 })
+    return NextResponse.json({ ok: false, error: { ...result.error, action }, preview }, { status: 200 })
   }
 
   const messageId = result.data?.messages?.[0]?.id ?? createId('wamid')

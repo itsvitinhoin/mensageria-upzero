@@ -9,6 +9,7 @@ import {
   Clock,
   FileText,
   Inbox,
+  Info,
   ListChecks,
   Loader2,
   MessageSquare,
@@ -484,7 +485,7 @@ function TestSendTab({ state, reload }: { state: UiState; reload: () => Promise<
   const [recipientPhone, setRecipientPhone] = useState('')
   const [values, setValues] = useState<Record<string, string>>({})
   const [optInConfirmed, setOptInConfirmed] = useState(false)
-  const [result, setResult] = useState<{ ok: boolean; messageId?: string; error?: { message?: string } | string; preview?: string } | null>(null)
+  const [result, setResult] = useState<{ ok: boolean; messageId?: string; error?: { message?: string; action?: string } | string; preview?: string } | null>(null)
   const [sending, setSending] = useState(false)
   const template = state.templates.find((item) => item.id === templateId)
   const preview = template ? renderTemplate(template.body, values) : ''
@@ -513,6 +514,15 @@ function TestSendTab({ state, reload }: { state: UiState; reload: () => Promise<
         <div className="space-y-4">
           {!state.integration.phoneNumberId ? <EmptyNotice title="Numero nao conectado" description="Nao e permitido enviar sem numero WhatsApp conectado." /> : null}
           {approvedTemplates.length === 0 ? <EmptyNotice title="Template aprovado ausente" description="Nao e permitido enviar sem template APPROVED." /> : null}
+          <Alert>
+            <Info className="h-4 w-4" />
+            <AlertTitle>Destinatario real para teste</AlertTitle>
+            <AlertDescription>
+              Digite aqui um numero WhatsApp real com opt-in. Se o remetente selecionado for o numero de teste da Meta,
+              a Meta tambem exige que esse destinatario esteja adicionado e verificado em WhatsApp &gt; API Setup &gt;
+              Manage phone number list. Com um numero real conectado na WABA, essa lista de teste deixa de ser o bloqueio.
+            </AlertDescription>
+          </Alert>
           <Field label="Numero WhatsApp do destinatario"><Input value={recipientPhone} onChange={(e) => setRecipientPhone(e.target.value)} placeholder="+55 11 99999-0000" /></Field>
           <Field label="Template aprovado">
             <Select value={templateId} onValueChange={(value) => { setTemplateId(value); setValues({}) }}>
@@ -548,6 +558,7 @@ function TestSendTab({ state, reload }: { state: UiState; reload: () => Promise<
               <AlertTitle>{result.ok ? 'Mensagem enviada' : 'Envio falhou'}</AlertTitle>
               <AlertDescription>
                 {result.ok ? `Message ID: ${mask(result.messageId)}` : typeof result.error === 'string' ? result.error : result.error?.message}
+                {!result.ok && typeof result.error === 'object' && result.error?.action ? <span className="mt-2 block">{result.error.action}</span> : null}
               </AlertDescription>
             </Alert>
           ) : null}
