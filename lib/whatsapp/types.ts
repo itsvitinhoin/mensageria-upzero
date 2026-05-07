@@ -18,11 +18,28 @@ export type ReviewItemStatus = 'Done' | 'Missing' | 'Failed' | 'Needs attention'
 export type LogStatus = 'success' | 'failed' | 'needs_attention' | 'info'
 export type TemplateCategory = 'MARKETING' | 'UTILITY' | 'AUTHENTICATION'
 export type TemplateStatus = 'APPROVED' | 'PENDING' | 'REJECTED' | 'PAUSED' | 'UNKNOWN'
-export type MessageCategory = 'Marketing' | 'Utility' | 'Authentication' | 'Service'
 export type CampaignStatus = 'Draft' | 'Scheduled' | 'Sending' | 'Sent' | 'Failed' | 'Paused' | 'Cancelled'
+export type AutomationStatus = 'Draft' | 'Active' | 'Paused' | 'Failed'
+export type AutomationRunStatus = 'queued' | 'sent' | 'delivered' | 'read' | 'responded' | 'failed' | 'blocked' | 'ignored'
 export type MessageDirection = 'inbound' | 'outbound'
 export type MessageStatus = 'queued' | 'sent' | 'delivered' | 'read' | 'failed' | 'received'
 export type WaOnboardingType = 'new_number' | 'existing_app_number' | 'migration_required' | 'connected'
+export type ECommerceEventType =
+  | 'customer.created'
+  | 'customer.updated'
+  | 'customer.registration_incomplete'
+  | 'customer.whatsapp_opt_in_missing'
+  | 'customer.whatsapp_opt_in_confirmed'
+  | 'order.created'
+  | 'order.updated'
+  | 'order.reserved'
+  | 'order.confirmed'
+  | 'order.payment_confirmed'
+  | 'order.processing'
+  | 'order.invoiced'
+  | 'order.shipped'
+  | 'order.delivered'
+  | 'order.cancelled'
 
 export interface SafeError {
   message: string
@@ -138,14 +155,19 @@ export interface InboxConversation {
 
 export interface Contact {
   id: string
+  externalId?: string
   name: string
   phone: string
   countryCode: string
   email?: string
+  document?: string
+  customerType?: 'RETAIL' | 'WHOLESALE'
   tags: string[]
   source?: string
-  status: 'active' | 'inactive' | 'blocked'
+  status: 'active' | 'inactive' | 'blocked' | 'incomplete'
   optInWhatsapp: boolean
+  city?: string
+  state?: string
   firstPurchaseAt?: string
   lastPurchaseAt?: string
   totalSpent?: number
@@ -167,6 +189,11 @@ export interface ContactFilters {
   optInWhatsapp?: boolean
   countryCode?: string
   source?: string
+  state?: string
+  city?: string
+  customerType?: string
+  orderStatus?: string
+  paymentStatus?: string
 }
 
 export interface ContactList {
@@ -205,33 +232,55 @@ export interface Campaign {
   updatedAt: string
 }
 
-export interface PricingRate {
-  country: string
-  currency: string
-  category: MessageCategory
-  unitCost: number
-  source: 'configured' | 'example'
+export interface ECommerceEventDefinition {
+  type: ECommerceEventType
+  label: string
+  group: 'Cadastro' | 'Pedido' | 'Entrega'
+  description: string
+  statusHint: 'success' | 'failed' | 'needs_attention' | 'info'
+  payloadFields: string[]
 }
 
-export interface PricingEstimateInput {
-  category: MessageCategory
-  country: string
-  quantity: number
-  currency: string
-  unitCost?: number
-  campaignId?: string
-  listId?: string
+export interface AutomationRule {
+  id: string
+  name: string
+  eventType: ECommerceEventType
+  conditions: ContactFilters & {
+    onlyWithOptIn?: boolean
+    minOrderTotal?: number
+  }
+  templateId?: string
+  variableMapping: Record<string, string>
+  delayMinutes: number
+  allowedWindow?: {
+    start: string
+    end: string
+  }
+  status: AutomationStatus
+  lastTriggeredAt?: string
+  totalRuns: number
+  successfulRuns: number
+  failedRuns: number
+  createdAt: string
+  updatedAt: string
 }
 
-export interface PricingEstimate {
-  category: MessageCategory
-  country: string
-  quantity: number
-  currency: string
-  unitCost: number
-  total: number
-  source: 'configured' | 'manual' | 'example'
-  disclaimer: string
+export interface AutomationRunLog {
+  id: string
+  automationId?: string
+  eventType: ECommerceEventType
+  status: AutomationRunStatus
+  timestamp: string
+  customerId?: string
+  customerName?: string
+  maskedPhone?: string
+  orderId?: string
+  templateId?: string
+  messageId?: string
+  description: string
+  safePayload?: Record<string, unknown>
+  error?: SafeError
+  recommendedAction?: string
 }
 
 export type WhatsAppLogType =
@@ -249,11 +298,15 @@ export type WhatsAppLogType =
   | 'webhook_received'
   | 'inbox_updated'
   | 'automation_created'
+  | 'automation_updated'
+  | 'automation_paused'
+  | 'automation_triggered'
+  | 'automation_error'
+  | 'ecommerce_event_received'
   | 'campaign_created'
   | 'campaign_sent'
   | 'campaign_paused'
   | 'campaign_error'
-  | 'price_estimated'
   | 'connection_saved'
   | 'contact_list_created'
   | 'contact_created'
@@ -280,6 +333,8 @@ export interface WhatsAppState {
   contacts: Contact[]
   contactLists: ContactList[]
   campaigns: Campaign[]
+  automations: AutomationRule[]
+  automationLogs: AutomationRunLog[]
   logs: WhatsAppLog[]
 }
 

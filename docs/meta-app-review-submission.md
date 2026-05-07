@@ -2,7 +2,7 @@
 
 ## Product Summary
 
-Our app allows a business user to connect their Meta Business account and WhatsApp Business Account, select a WhatsApp phone number, manage message templates, send WhatsApp messages using approved templates, create campaigns based on segmented contact lists, estimate WhatsApp messaging costs, and receive customer replies in the app inbox.
+Our app allows a business user to connect their Meta Business account and WhatsApp Business Account, select a WhatsApp phone number, manage message templates, send WhatsApp messages using approved templates, create campaigns based on segmented customer lists, trigger WhatsApp automations from e-commerce customer/order events, and receive customer replies in the app inbox.
 
 The requested permissions are used only to let the authenticated business user manage their own WhatsApp Business assets and messaging workflow.
 
@@ -27,7 +27,7 @@ The screencast demonstrates the complete flow:
 3. Listing and managing WhatsApp message templates.
 4. Sending a WhatsApp message from the app to a real WhatsApp user.
 5. Receiving the customer reply from WhatsApp through webhooks and displaying it inside the app inbox.
-6. Showing campaign, inbox and integration logs.
+6. Showing campaign, automation, inbox and integration logs.
 
 ## Recording Script
 
@@ -47,7 +47,7 @@ The screencast demonstrates the complete flow:
 14. Return to Inbox.
 15. Show the received reply.
 16. Open Logs.
-17. Show send and webhook events.
+17. Show send, automation and webhook events.
 
 ## Pre-Submission Checklist
 

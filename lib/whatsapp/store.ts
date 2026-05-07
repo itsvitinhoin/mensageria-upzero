@@ -1,6 +1,8 @@
 import { loadFromDisk, saveToDisk } from './persist'
 import {
   META_REQUIRED_PERMISSIONS,
+  type AutomationRule,
+  type AutomationRunLog,
   type Campaign,
   type Contact,
   type ContactList,
@@ -107,6 +109,8 @@ function defaultState(): WhatsAppState {
     contacts: [],
     contactLists: [],
     campaigns: [],
+    automations: [],
+    automationLogs: [],
     logs: [
       {
         id: id('log'),
@@ -148,6 +152,8 @@ function normalizeState(raw: unknown): WhatsAppState {
     contacts: Array.isArray(maybe.contacts) ? maybe.contacts : [],
     contactLists: Array.isArray(maybe.contactLists) ? maybe.contactLists : [],
     campaigns: Array.isArray(maybe.campaigns) ? maybe.campaigns : [],
+    automations: Array.isArray(maybe.automations) ? maybe.automations : [],
+    automationLogs: Array.isArray(maybe.automationLogs) ? maybe.automationLogs : [],
     logs: Array.isArray(maybe.logs) ? maybe.logs : [],
   }
 }
@@ -269,6 +275,30 @@ export function saveCampaign(campaign: Campaign): WhatsAppState {
     if (idx >= 0) state.campaigns[idx] = campaign
     else state.campaigns.unshift(campaign)
   })
+}
+
+export function saveAutomation(automation: AutomationRule): WhatsAppState {
+  return updateState((state) => {
+    const idx = state.automations.findIndex((item) => item.id === automation.id)
+    if (idx >= 0) state.automations[idx] = automation
+    else state.automations.unshift(automation)
+  })
+}
+
+export function addAutomationRunLog(input: Omit<AutomationRunLog, 'id' | 'timestamp'> & { timestamp?: string }): AutomationRunLog {
+  const log: AutomationRunLog = {
+    ...input,
+    id: id('automation-log'),
+    timestamp: input.timestamp ?? nowIso(),
+    safePayload: safeObject(input.safePayload),
+    error: input.error ? sanitizeError(input.error, input.recommendedAction) : undefined,
+  }
+
+  updateState((state) => {
+    state.automationLogs = [log, ...state.automationLogs].slice(0, 1000)
+  })
+
+  return log
 }
 
 export function addInboxMessage(message: InboxMessage): WhatsAppState {

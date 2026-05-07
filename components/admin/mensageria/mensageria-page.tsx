@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
   AlertCircle,
-  Calculator,
   CheckCircle2,
   Clock,
   FileText,
@@ -15,10 +14,11 @@ import {
   MessageSquare,
   RefreshCw,
   Send,
+  Settings,
   ShieldCheck,
   Users,
-  Wallet,
   XCircle,
+  Zap,
 } from 'lucide-react'
 import { AdminHero, AdminPage, AdminPanel, AdminStatCard, AdminStatGrid, AdminToolbar } from '@/components/admin/admin-mobile-ui'
 import { FacebookOAuthButton, type WaOAuthCredentials } from '@/components/admin/mensageria/facebook-oauth'
@@ -33,15 +33,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
+import { ECOMMERCE_EVENT_DEFINITIONS } from '@/lib/whatsapp/ecommerce-events'
 import { renderTemplate } from '@/lib/whatsapp/engine'
 import { META_PERMISSIONS_NOT_REQUESTED_NOW, META_REQUIRED_PERMISSIONS } from '@/lib/whatsapp/types'
 import type {
   Campaign,
+  AutomationRule,
   Contact,
   ContactList,
+  ECommerceEventDefinition,
   InboxConversation,
-  MessageCategory,
-  PricingEstimate,
   ReviewChecklistItem,
   TemplateCategory,
   WhatsAppLog,
@@ -50,18 +51,17 @@ import type {
 } from '@/lib/whatsapp/types'
 
 type UiState = WhatsAppState & { reviewChecklist: ReviewChecklistItem[] }
-type TabKey = 'connection' | 'templates' | 'test' | 'inbox' | 'campaigns' | 'contacts' | 'pricing' | 'logs' | 'review'
+type TabKey = 'overview' | 'contacts' | 'campaigns' | 'automations' | 'inbox' | 'templates' | 'connection' | 'diagnostics'
 
 const TABS: Array<{ value: TabKey; label: string; icon: typeof MessageSquare }> = [
-  { value: 'connection', label: 'Conexao Meta', icon: ShieldCheck },
-  { value: 'templates', label: 'Templates', icon: FileText },
-  { value: 'test', label: 'Envio de Teste', icon: Send },
-  { value: 'inbox', label: 'Inbox', icon: Inbox },
+  { value: 'overview', label: 'Visao Geral', icon: MessageSquare },
+  { value: 'contacts', label: 'Clientes e Segmentos', icon: Users },
   { value: 'campaigns', label: 'Campanhas', icon: MessageSquare },
-  { value: 'contacts', label: 'Listas de Contatos', icon: Users },
-  { value: 'pricing', label: 'Calculadora de Preco', icon: Calculator },
-  { value: 'logs', label: 'Logs', icon: ListChecks },
-  { value: 'review', label: 'Meta Review Screencast', icon: ShieldCheck },
+  { value: 'automations', label: 'Automacoes', icon: Zap },
+  { value: 'inbox', label: 'Inbox', icon: Inbox },
+  { value: 'templates', label: 'Templates', icon: FileText },
+  { value: 'connection', label: 'Conexao Meta', icon: ShieldCheck },
+  { value: 'diagnostics', label: 'Diagnostico', icon: Settings },
 ]
 
 const statusClass: Record<string, string> = {
@@ -74,6 +74,16 @@ const statusClass: Record<string, string> = {
   started: 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800/60 dark:bg-sky-950/30 dark:text-sky-300',
   info: 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800/60 dark:bg-sky-950/30 dark:text-sky-300',
   not_started: 'border-border bg-muted text-muted-foreground',
+  Active: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-950/30 dark:text-emerald-300',
+  Draft: 'border-border bg-muted text-muted-foreground',
+  Paused: 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300',
+  queued: 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800/60 dark:bg-sky-950/30 dark:text-sky-300',
+  sent: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-950/30 dark:text-emerald-300',
+  delivered: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-950/30 dark:text-emerald-300',
+  read: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-950/30 dark:text-emerald-300',
+  responded: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-950/30 dark:text-emerald-300',
+  blocked: 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300',
+  ignored: 'border-border bg-muted text-muted-foreground',
   Missing: 'border-border bg-muted text-muted-foreground',
   Done: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-950/30 dark:text-emerald-300',
   Failed: 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800/60 dark:bg-rose-950/30 dark:text-rose-300',
@@ -149,7 +159,7 @@ export default function MensageriaPage() {
   const [state, setState] = useState<UiState | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [activeTab, setActiveTab] = useState<TabKey>('connection')
+  const [activeTab, setActiveTab] = useState<TabKey>('overview')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -191,16 +201,21 @@ export default function MensageriaPage() {
   const business = state.businesses.find((item) => item.id === state.integration.businessId)
   const waba = state.wabas.find((item) => item.id === state.integration.wabaId)
   const phone = state.phoneNumbers.find((item) => item.id === state.integration.phoneNumberId)
-  const template = selectedTemplate(state)
   const failureLogs = state.logs.filter((log) => log.status === 'failed')
+  const readyItems = [
+    Boolean(business),
+    Boolean(waba),
+    Boolean(phone),
+    Boolean(selectedTemplate(state)?.status === 'APPROVED'),
+  ].filter(Boolean).length
 
   return (
     <AdminPage>
       <AdminHero
         icon={MessageSquare}
-        eyebrow="WhatsApp Business Cloud API"
-        title="Mensageria"
-        description="Conexao Meta, templates aprovados, envios reais, inbox, campanhas, listas, precificacao e checklist de App Review."
+        eyebrow="CRM, campanhas e automacoes WhatsApp"
+        title="Mensageria UpZero"
+        description="Crie segmentos de clientes, campanhas e automacoes WhatsApp baseadas em cadastro, pedido, pagamento e entrega."
         actions={
           <>
             <Link href="/privacy">
@@ -217,12 +232,7 @@ export default function MensageriaPage() {
         }
       />
 
-      <AdminStatGrid>
-        <AdminStatCard icon={ShieldCheck} label="Status geral" value={<StatusPill status={state.integration.status} />} hint={state.integration.alert ?? 'Ready exige Business, WABA, numero e template aprovado.'} tone={state.integration.status === 'ready' ? 'success' : state.integration.status === 'failed' ? 'danger' : 'warning'} />
-        <AdminStatCard icon={Users} label="Business" value={business?.name ?? mask(state.integration.businessId)} hint={`ID ${mask(state.integration.businessId)}`} tone={business ? 'success' : 'warning'} />
-        <AdminStatCard icon={MessageSquare} label="WABA / Numero" value={waba?.name ?? mask(state.integration.wabaId)} hint={phone ? `${phone.verifiedName ?? 'Numero'} ${phone.displayPhoneNumber}` : `Phone ${mask(state.integration.phoneNumberId)}`} tone={phone ? 'success' : 'warning'} />
-        <AdminStatCard icon={Clock} label="Ultimo sync" value={state.integration.lastSyncAt ? new Date(state.integration.lastSyncAt).toLocaleString('pt-BR') : 'Nunca'} hint={failureLogs[0]?.description ?? 'Sem falhas recentes'} tone={failureLogs.length > 0 ? 'danger' : 'info'} />
-      </AdminStatGrid>
+      <IntegrationSummary state={state} businessName={business?.name} wabaName={waba?.name} phoneLabel={phone ? `${phone.verifiedName ?? 'Numero'} ${phone.displayPhoneNumber}` : undefined} readyItems={readyItems} />
 
       {state.integration.lastError ? (
         <Alert className="border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-800/60 dark:bg-rose-950/30 dark:text-rose-300">
@@ -246,17 +256,96 @@ export default function MensageriaPage() {
           </div>
         </AdminToolbar>
 
-        <TabsContent value="connection"><ConnectionTab state={state} reload={load} /></TabsContent>
-        <TabsContent value="templates"><TemplatesTab state={state} reload={load} /></TabsContent>
-        <TabsContent value="test"><TestSendTab state={state} reload={load} /></TabsContent>
-        <TabsContent value="inbox"><InboxTab state={state} reload={load} /></TabsContent>
-        <TabsContent value="campaigns"><CampaignsTab state={state} reload={load} /></TabsContent>
+        <TabsContent value="overview"><OverviewTab state={state} failureCount={failureLogs.length} /></TabsContent>
         <TabsContent value="contacts"><ContactsTab state={state} reload={load} /></TabsContent>
-        <TabsContent value="pricing"><PricingTab state={state} reload={load} /></TabsContent>
-        <TabsContent value="logs"><LogsTab state={state} reload={load} /></TabsContent>
-        <TabsContent value="review"><ReviewTab state={state} /></TabsContent>
+        <TabsContent value="campaigns"><CampaignsTab state={state} reload={load} /></TabsContent>
+        <TabsContent value="automations"><AutomationsTab state={state} reload={load} /></TabsContent>
+        <TabsContent value="inbox"><InboxTab state={state} reload={load} /></TabsContent>
+        <TabsContent value="templates"><TemplatesTab state={state} reload={load} /></TabsContent>
+        <TabsContent value="connection"><ConnectionTab state={state} reload={load} /></TabsContent>
+        <TabsContent value="diagnostics"><DiagnosticsTab state={state} reload={load} /></TabsContent>
       </Tabs>
     </AdminPage>
+  )
+}
+
+function IntegrationSummary({ state, businessName, wabaName, phoneLabel, readyItems }: { state: UiState; businessName?: string; wabaName?: string; phoneLabel?: string; readyItems: number }) {
+  const template = selectedTemplate(state)
+  const statusTone = state.integration.status === 'ready' ? 'success' : state.integration.status === 'failed' ? 'failed' : 'needs_attention'
+
+  return (
+    <div className="rounded-lg border border-border/60 bg-card/80 p-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusPill status={statusTone} />
+          <span className="font-semibold">{readyItems}/4 itens prontos</span>
+          <span className="text-sm text-muted-foreground">{state.integration.alert ?? 'Meta configurada fica como infraestrutura; o uso diario acontece em clientes, campanhas e automacoes.'}</span>
+        </div>
+        <span className="text-xs text-muted-foreground">
+          Ultimo sync: {state.integration.lastSyncAt ? new Date(state.integration.lastSyncAt).toLocaleString('pt-BR') : 'nunca'}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-2 text-xs md:grid-cols-4">
+        <ReadOnlyInfo label="Business" value={businessName ?? mask(state.integration.businessId)} status={businessName ? 'success' : 'needs_attention'} />
+        <ReadOnlyInfo label="WABA" value={wabaName ?? mask(state.integration.wabaId)} status={wabaName ? 'success' : 'needs_attention'} />
+        <ReadOnlyInfo label="Numero" value={phoneLabel ?? mask(state.integration.phoneNumberId)} status={phoneLabel ? 'success' : 'needs_attention'} />
+        <ReadOnlyInfo label="Template padrao" value={template?.name ?? 'nao selecionado'} status={template?.status === 'APPROVED' ? 'success' : 'needs_attention'} />
+      </div>
+    </div>
+  )
+}
+
+function ReadOnlyInfo({ label, value, status }: { label: string; value: string; status: string }) {
+  return (
+    <div className="rounded-md border border-border/60 bg-muted/25 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-medium text-muted-foreground">{label}</span>
+        <StatusPill status={status} />
+      </div>
+      <p className="mt-1 font-semibold text-foreground">{value}</p>
+    </div>
+  )
+}
+
+function OverviewTab({ state, failureCount }: { state: UiState; failureCount: number }) {
+  const optInContacts = state.contacts.filter((contact) => contact.optInWhatsapp).length
+  const activeAutomations = state.automations.filter((automation) => automation.status === 'Active').length
+  const activeCampaigns = state.campaigns.filter((campaign) => ['Draft', 'Scheduled', 'Sending'].includes(campaign.status)).length
+  const recentAutomationLogs = state.automationLogs.slice(0, 4)
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-[1fr_0.9fr]">
+      <AdminPanel title="Operacao WhatsApp" description="Resumo operacional sem campos editaveis. Use as abas para agir: clientes, campanhas e automacoes.">
+        <AdminStatGrid>
+          <AdminStatCard icon={Users} label="Clientes" value={state.contacts.length} hint={`${optInContacts} com opt-in WhatsApp`} tone={optInContacts > 0 ? 'success' : 'warning'} />
+          <AdminStatCard icon={MessageSquare} label="Campanhas" value={state.campaigns.length} hint={`${activeCampaigns} em draft/agendadas/enviando`} tone="info" />
+          <AdminStatCard icon={Zap} label="Automacoes" value={state.automations.length} hint={`${activeAutomations} ativas`} tone={activeAutomations > 0 ? 'success' : 'warning'} />
+          <AdminStatCard icon={ListChecks} label="Alertas" value={failureCount} hint="falhas recentes em logs globais" tone={failureCount > 0 ? 'danger' : 'success'} />
+        </AdminStatGrid>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <StatusLine label="Segmentos prontos" status={state.contactLists.length > 0 ? 'success' : 'needs_attention'} success="Listas ou segmentacoes salvas estao prontas para campanhas." failure="Crie um segmento em Clientes e Segmentos." />
+          <StatusLine label="Automacoes e-com" status={activeAutomations > 0 ? 'success' : 'needs_attention'} success="Ha automacoes ativas ouvindo eventos reais do e-commerce." failure="Crie uma automacao para status de cadastro, pedido, pagamento ou entrega." />
+          <StatusLine label="Inbox" status={state.conversations.length > 0 ? 'success' : 'info'} success="Conversas WhatsApp ja chegaram ao app." failure="Mensagens recebidas via webhook aparecem aqui." />
+          <StatusLine label="Meta Review" status={state.reviewChecklist.every((item) => item.status === 'Done') ? 'success' : 'needs_attention'} success="Checklist completo para gravacao." failure="O checklist completo fica em Diagnostico." />
+        </div>
+      </AdminPanel>
+
+      <AdminPanel title="Ultimas automacoes" description="Tags verdes indicam envio/entrega/leitura; laranja indica bloqueio ou pendencia; vermelho indica falha.">
+        <div className="space-y-3">
+          {recentAutomationLogs.length === 0 ? <EmptyNotice title="Sem logs de automacao" description="Quando eventos do e-commerce chegarem, os disparos e bloqueios aparecem aqui." /> : null}
+          {recentAutomationLogs.map((log) => (
+            <div key={log.id} className="rounded-lg border border-border/60 bg-card/80 p-3 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusPill status={log.status} />
+                <span className="font-semibold">{log.eventType}</span>
+              </div>
+              <p className="mt-1 text-muted-foreground">{log.description}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{new Date(log.timestamp).toLocaleString('pt-BR')}</p>
+            </div>
+          ))}
+        </div>
+      </AdminPanel>
+    </div>
   )
 }
 
@@ -724,9 +813,169 @@ function CampaignRow({ campaign, list, template, onSend, onPause }: { campaign: 
   )
 }
 
+function AutomationsTab({ state, reload }: { state: UiState; reload: () => Promise<void> }) {
+  const approvedTemplates = state.templates.filter((template) => template.status === 'APPROVED')
+  const [form, setForm] = useState({
+    name: '',
+    eventType: 'order.payment_confirmed',
+    templateId: '',
+    status: 'Draft',
+    onlyWithOptIn: true,
+    state: '',
+    orderStatus: '',
+    paymentStatus: '',
+    minOrderTotal: '',
+    delayMinutes: '0',
+    variableMapping: 'nome=customer.name\npedido=order.id\ntotal=order.total\nrastreio=label.tracking_code',
+  })
+
+  async function createAutomation() {
+    const variableMapping = Object.fromEntries(
+      form.variableMapping
+        .split('\n')
+        .map((line) => line.split('=').map((part) => part.trim()))
+        .filter(([key, value]) => key && value),
+    )
+
+    await api('/api/mensageria/automations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: form.name,
+        eventType: form.eventType,
+        templateId: form.templateId || undefined,
+        status: form.status,
+        delayMinutes: Number(form.delayMinutes),
+        variableMapping,
+        conditions: {
+          onlyWithOptIn: form.onlyWithOptIn,
+          state: form.state || undefined,
+          orderStatus: form.orderStatus || undefined,
+          paymentStatus: form.paymentStatus || undefined,
+          minOrderTotal: form.minOrderTotal ? Number(form.minOrderTotal) : undefined,
+        },
+      }),
+    })
+    setForm((prev) => ({ ...prev, name: '' }))
+    await reload()
+  }
+
+  async function updateAutomation(id: string, status: AutomationRule['status']) {
+    await api('/api/mensageria/automations', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, status }),
+    })
+    await reload()
+  }
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+      <AdminPanel title="Eventos do e-commerce" description="Eventos reais da External API UpZero usados como gatilho para WhatsApp. Cadastro incompleto e opt-in sao status calculados pelo app.">
+        <div className="space-y-3">
+          <div className="grid gap-2 md:grid-cols-2">
+            {ECOMMERCE_EVENT_DEFINITIONS.map((event) => <EcommerceEventCard key={event.type} event={event} />)}
+          </div>
+        </div>
+      </AdminPanel>
+
+      <div className="space-y-4">
+        <AdminPanel title="Criar automacao" description="Escolha o evento, as condicoes e o template aprovado. O envio real so acontece se numero, template e opt-in estiverem prontos.">
+          <div className="space-y-3">
+            <Field label="Nome da automacao"><Input value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="Ex: Pos-pagamento aprovado" /></Field>
+            <SelectBlock label="Evento do e-commerce" value={form.eventType} onChange={(value) => setForm((prev) => ({ ...prev, eventType: value }))} placeholder="Selecionar evento" items={ECOMMERCE_EVENT_DEFINITIONS.map((event) => ({ value: event.type, label: event.label, hint: event.type }))} />
+            <SelectBlock label="Template WhatsApp" value={form.templateId} onChange={(value) => setForm((prev) => ({ ...prev, templateId: value }))} placeholder="Selecionar template aprovado" items={approvedTemplates.map((template) => ({ value: template.id, label: template.name, hint: template.category }))} />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Status">
+                <Select value={form.status} onValueChange={(value) => setForm((prev) => ({ ...prev, status: value }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Draft">Draft</SelectItem>
+                    <SelectItem value="Active">Active</SelectItem>
+                    <SelectItem value="Paused">Paused</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Delay em minutos"><Input type="number" min="0" value={form.delayMinutes} onChange={(e) => setForm((prev) => ({ ...prev, delayMinutes: e.target.value }))} /></Field>
+              <Field label="Estado do cliente"><Input value={form.state} onChange={(e) => setForm((prev) => ({ ...prev, state: e.target.value.toUpperCase() }))} placeholder="SP, MG..." /></Field>
+              <Field label="Valor minimo do pedido"><Input type="number" min="0" value={form.minOrderTotal} onChange={(e) => setForm((prev) => ({ ...prev, minOrderTotal: e.target.value }))} /></Field>
+              <Field label="Status do pedido"><Input value={form.orderStatus} onChange={(e) => setForm((prev) => ({ ...prev, orderStatus: e.target.value.toUpperCase() }))} placeholder="CONFIRMED, SHIPPED..." /></Field>
+              <Field label="Status pagamento"><Input value={form.paymentStatus} onChange={(e) => setForm((prev) => ({ ...prev, paymentStatus: e.target.value.toLowerCase() }))} placeholder="paid, unpaid..." /></Field>
+            </div>
+            <label className="flex items-center gap-2 text-sm"><Checkbox checked={form.onlyWithOptIn} onCheckedChange={(checked) => setForm((prev) => ({ ...prev, onlyWithOptIn: Boolean(checked) }))} />Somente clientes com opt-in WhatsApp</label>
+            <Field label="Mapeamento de variaveis (variavel=caminho no evento)"><Textarea rows={5} value={form.variableMapping} onChange={(e) => setForm((prev) => ({ ...prev, variableMapping: e.target.value }))} /></Field>
+            <Button onClick={createAutomation} disabled={!form.name || !form.eventType} className="gap-2"><Zap className="h-4 w-4" />Criar automacao</Button>
+          </div>
+        </AdminPanel>
+
+        <AdminPanel title="Regras e logs de automacao" description="Entregue/lido/respondido aparecem em verde; bloqueado/pendente em laranja; falha em vermelho.">
+          <div className="space-y-3">
+            {state.automations.length === 0 ? <EmptyNotice title="Nenhuma automacao criada" description="Crie uma automacao para eventos de cadastro, pedido, pagamento ou entrega." /> : null}
+            {state.automations.map((automation) => <AutomationRow key={automation.id} automation={automation} template={state.templates.find((template) => template.id === automation.templateId)} onActivate={() => updateAutomation(automation.id, 'Active')} onPause={() => updateAutomation(automation.id, 'Paused')} />)}
+            <div className="space-y-2">
+              {state.automationLogs.slice(0, 8).map((log) => (
+                <div key={log.id} className="rounded-lg border border-border/60 bg-card/80 p-3 text-xs">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusPill status={log.status} />
+                    <span className="font-semibold">{log.eventType}</span>
+                    <span className="text-muted-foreground">{new Date(log.timestamp).toLocaleString('pt-BR')}</span>
+                  </div>
+                  <p className="mt-1 text-muted-foreground">{log.description}</p>
+                  {log.recommendedAction ? <p className="mt-1 text-muted-foreground">Acao: {log.recommendedAction}</p> : null}
+                </div>
+              ))}
+            </div>
+            <ContextLogs logs={state.logs} types={['automation_created', 'automation_updated', 'automation_paused', 'automation_triggered', 'automation_error', 'ecommerce_event_received']} />
+          </div>
+        </AdminPanel>
+      </div>
+    </div>
+  )
+}
+
+function EcommerceEventCard({ event }: { event: ECommerceEventDefinition }) {
+  return (
+    <div className="rounded-lg border border-border/60 bg-card/80 p-3 text-xs">
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-semibold">{event.label}</p>
+        <StatusPill status={event.statusHint} />
+      </div>
+      <p className="mt-1 text-muted-foreground">{event.type}</p>
+      <p className="mt-2 text-muted-foreground">{event.description}</p>
+      <p className="mt-2 text-muted-foreground">Campos: {event.payloadFields.join(', ')}</p>
+    </div>
+  )
+}
+
+function AutomationRow({ automation, template, onActivate, onPause }: { automation: AutomationRule; template?: WhatsAppTemplate; onActivate: () => void; onPause: () => void }) {
+  return (
+    <div className="rounded-lg border border-border/60 bg-card/80 p-3 text-sm">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-semibold">{automation.name}</p>
+            <StatusPill status={automation.status} />
+            <Badge variant="outline">{automation.eventType}</Badge>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">Template: {template?.name ?? 'nao selecionado'} | Delay: {automation.delayMinutes} min</p>
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={onPause}>Pausar</Button>
+          <Button size="sm" onClick={onActivate}>Ativar</Button>
+        </div>
+      </div>
+      <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+        <span>Total: {automation.totalRuns}</span>
+        <span>Sucesso: {automation.successfulRuns}</span>
+        <span>Falhas/bloqueios: {automation.failedRuns}</span>
+      </div>
+    </div>
+  )
+}
+
 function ContactsTab({ state, reload }: { state: UiState; reload: () => Promise<void> }) {
-  const [contact, setContact] = useState({ name: '', phone: '', countryCode: '55', tags: '', source: '', optInWhatsapp: false })
-  const [list, setList] = useState({ name: '', description: '', contactIds: [] as string[], optInOnly: true, tags: '', source: '', countryCode: '55' })
+  const [contact, setContact] = useState({ name: '', phone: '', countryCode: '55', email: '', state: '', city: '', totalSpent: '', orderCount: '', tags: '', source: 'manual', optInWhatsapp: false })
+  const [list, setList] = useState({ name: '', description: '', contactIds: [] as string[], optInOnly: true, tags: '', source: '', countryCode: '55', state: '', minOrderValue: '' })
 
   async function addContact() {
     await api('/api/mensageria/contact-lists', {
@@ -734,7 +983,7 @@ function ContactsTab({ state, reload }: { state: UiState; reload: () => Promise<
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ kind: 'contact', ...contact, tags: contact.tags.split(',').map((tag) => tag.trim()).filter(Boolean) }),
     })
-    setContact({ name: '', phone: '', countryCode: '55', tags: '', source: '', optInWhatsapp: false })
+    setContact({ name: '', phone: '', countryCode: '55', email: '', state: '', city: '', totalSpent: '', orderCount: '', tags: '', source: 'manual', optInWhatsapp: false })
     await reload()
   }
 
@@ -747,20 +996,27 @@ function ContactsTab({ state, reload }: { state: UiState; reload: () => Promise<
         name: list.name,
         description: list.description,
         contactIds: list.contactIds,
-        filters: { optInWhatsapp: list.optInOnly, tags: list.tags.split(',').map((tag) => tag.trim()).filter(Boolean), source: list.source, countryCode: list.countryCode },
+        filters: { optInWhatsapp: list.optInOnly, tags: list.tags.split(',').map((tag) => tag.trim()).filter(Boolean), source: list.source, countryCode: list.countryCode, state: list.state, minOrderValue: list.minOrderValue ? Number(list.minOrderValue) : undefined },
       }),
     })
-    setList({ name: '', description: '', contactIds: [], optInOnly: true, tags: '', source: '', countryCode: '55' })
+    setList({ name: '', description: '', contactIds: [], optInOnly: true, tags: '', source: '', countryCode: '55', state: '', minOrderValue: '' })
     await reload()
   }
 
   return (
     <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-      <AdminPanel title="Adicionar contato manual" description="Telefone e opt-in ficam explicitos; contatos sem opt-in nao podem receber campanhas.">
+      <AdminPanel title="Cliente manual ou sincronizado" description="A lista deve representar clientes do e-commerce. Quando a API key estiver conectada, clientes e pedidos podem preencher estes campos automaticamente; manual fica apenas para teste operacional.">
         <div className="space-y-3">
           <Field label="Nome"><Input value={contact.name} onChange={(e) => setContact((prev) => ({ ...prev, name: e.target.value }))} /></Field>
           <Field label="Telefone"><Input value={contact.phone} onChange={(e) => setContact((prev) => ({ ...prev, phone: e.target.value }))} /></Field>
+          <Field label="E-mail"><Input value={contact.email} onChange={(e) => setContact((prev) => ({ ...prev, email: e.target.value }))} /></Field>
           <Field label="Pais/DDI"><Input value={contact.countryCode} onChange={(e) => setContact((prev) => ({ ...prev, countryCode: e.target.value }))} /></Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Estado"><Input value={contact.state} onChange={(e) => setContact((prev) => ({ ...prev, state: e.target.value.toUpperCase() }))} placeholder="SP" /></Field>
+            <Field label="Cidade"><Input value={contact.city} onChange={(e) => setContact((prev) => ({ ...prev, city: e.target.value }))} /></Field>
+            <Field label="Total gasto"><Input type="number" min="0" value={contact.totalSpent} onChange={(e) => setContact((prev) => ({ ...prev, totalSpent: e.target.value }))} /></Field>
+            <Field label="Numero de pedidos"><Input type="number" min="0" value={contact.orderCount} onChange={(e) => setContact((prev) => ({ ...prev, orderCount: e.target.value }))} /></Field>
+          </div>
           <Field label="Tags"><Input value={contact.tags} onChange={(e) => setContact((prev) => ({ ...prev, tags: e.target.value }))} placeholder="vip, primeira-compra" /></Field>
           <Field label="Origem"><Input value={contact.source} onChange={(e) => setContact((prev) => ({ ...prev, source: e.target.value }))} /></Field>
           <label className="flex items-center gap-2 text-sm"><Checkbox checked={contact.optInWhatsapp} onCheckedChange={(checked) => setContact((prev) => ({ ...prev, optInWhatsapp: Boolean(checked) }))} />Opt-in WhatsApp confirmado</label>
@@ -776,6 +1032,8 @@ function ContactsTab({ state, reload }: { state: UiState; reload: () => Promise<
               <Field label="Descricao"><Input value={list.description} onChange={(e) => setList((prev) => ({ ...prev, description: e.target.value }))} /></Field>
               <Field label="Tags filtro"><Input value={list.tags} onChange={(e) => setList((prev) => ({ ...prev, tags: e.target.value }))} /></Field>
               <Field label="Origem filtro"><Input value={list.source} onChange={(e) => setList((prev) => ({ ...prev, source: e.target.value }))} /></Field>
+              <Field label="Estado filtro"><Input value={list.state} onChange={(e) => setList((prev) => ({ ...prev, state: e.target.value.toUpperCase() }))} /></Field>
+              <Field label="Pedido acima de"><Input type="number" min="0" value={list.minOrderValue} onChange={(e) => setList((prev) => ({ ...prev, minOrderValue: e.target.value }))} /></Field>
             </div>
             <label className="mt-3 flex items-center gap-2 text-sm"><Checkbox checked={list.optInOnly} onCheckedChange={(checked) => setList((prev) => ({ ...prev, optInOnly: Boolean(checked) }))} />Somente contatos com opt-in</label>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -800,7 +1058,7 @@ function ContactsTab({ state, reload }: { state: UiState; reload: () => Promise<
             ))}
           </div>
 
-          <div className="grid gap-2 md:grid-cols-3">
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
             {state.contacts.map((item) => <ContactCard key={item.id} contact={item} />)}
           </div>
           <ContextLogs logs={state.logs} types={['contact_created', 'contact_list_created']} />
@@ -819,63 +1077,20 @@ function ContactCard({ contact }: { contact: Contact }) {
           <StatusPill status={contact.optInWhatsapp ? 'success' : 'needs_attention'} />
         </div>
         <p className="mt-1 text-muted-foreground">{maskPhone(contact.phone)}</p>
+        <p className="mt-1 text-muted-foreground">{contact.city ?? 'Cidade nao informada'} / {contact.state ?? 'UF'}</p>
+        <p className="mt-1 text-muted-foreground">Pedidos: {contact.orderCount ?? 0} | Total: {(contact.totalSpent ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
         <p className="mt-1 text-muted-foreground">Tags: {contact.tags.join(', ') || 'none'}</p>
       </CardContent>
     </Card>
   )
 }
 
-function PricingTab({ state, reload }: { state: UiState; reload: () => Promise<void> }) {
-  const [input, setInput] = useState({ category: 'Marketing' as MessageCategory, country: 'BR', quantity: '100', currency: 'USD', unitCost: '0', campaignId: '', listId: '' })
-  const [estimate, setEstimate] = useState<PricingEstimate | null>(null)
-
-  async function calculate() {
-    const data = await api<PricingEstimate>('/api/mensageria/pricing', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...input, quantity: Number(input.quantity), unitCost: Number(input.unitCost), campaignId: input.campaignId || undefined, listId: input.listId || undefined }),
-    })
-    setEstimate(data)
-    await reload()
-  }
-
+function DiagnosticsTab({ state, reload }: { state: UiState; reload: () => Promise<void> }) {
   return (
-    <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-      <AdminPanel title="Calculadora de preco" description="Custo unitario e rate card sao configuraveis. Nao ha valor hardcoded como verdade absoluta.">
-        <div className="space-y-3">
-          <Field label="Categoria">
-            <Select value={input.category} onValueChange={(value) => setInput((prev) => ({ ...prev, category: value as MessageCategory }))}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>{['Marketing', 'Utility', 'Authentication', 'Service'].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent>
-            </Select>
-          </Field>
-          <Field label="Pais dos destinatarios"><Input value={input.country} onChange={(e) => setInput((prev) => ({ ...prev, country: e.target.value }))} /></Field>
-          <Field label="Quantidade"><Input type="number" value={input.quantity} onChange={(e) => setInput((prev) => ({ ...prev, quantity: e.target.value }))} /></Field>
-          <Field label="Moeda"><Input value={input.currency} onChange={(e) => setInput((prev) => ({ ...prev, currency: e.target.value }))} /></Field>
-          <Field label="Custo unitario configuravel"><Input type="number" step="0.000001" value={input.unitCost} onChange={(e) => setInput((prev) => ({ ...prev, unitCost: e.target.value }))} /></Field>
-          <SelectBlock label="Simular por campanha" value={input.campaignId} onChange={(value) => setInput((prev) => ({ ...prev, campaignId: value }))} placeholder="Opcional" items={state.campaigns.map((campaign) => ({ value: campaign.id, label: campaign.name, hint: campaign.status }))} />
-          <SelectBlock label="Simular por lista" value={input.listId} onChange={(value) => setInput((prev) => ({ ...prev, listId: value }))} placeholder="Opcional" items={state.contactLists.map((list) => ({ value: list.id, label: list.name, hint: `${list.contactIds.length} contatos` }))} />
-          <Button onClick={calculate} className="gap-2"><Calculator className="h-4 w-4" />Calcular</Button>
-        </div>
-      </AdminPanel>
-      <AdminPanel title="Estimativa" description="Final charges are determined by Meta. This is an estimate based on the configured rate card.">
-        <div className="space-y-4">
-          {estimate ? (
-            <>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <AdminStatCard icon={Wallet} label="Custo total" value={`${estimate.currency} ${estimate.total.toFixed(4)}`} hint={`${estimate.quantity} mensagens`} tone="info" />
-                <AdminStatCard label="Custo unitario" value={estimate.unitCost.toFixed(6)} hint={estimate.source} />
-                <AdminStatCard label="Categoria" value={estimate.category} hint={estimate.country} />
-              </div>
-              <Alert><AlertCircle className="h-4 w-4" /><AlertTitle>Aviso</AlertTitle><AlertDescription>{estimate.disclaimer}</AlertDescription></Alert>
-            </>
-          ) : <EmptyNotice title="Nenhuma estimativa calculada" description="Informe categoria, pais, quantidade, moeda e custo unitario para simular." />}
-          <div className="grid gap-2 text-xs sm:grid-cols-4">
-            {['Marketing', 'Utility', 'Authentication', 'Service'].map((category) => <div key={category} className="rounded-lg border border-border/60 p-3">{category}</div>)}
-          </div>
-          <ContextLogs logs={state.logs} types={['price_estimated']} />
-        </div>
-      </AdminPanel>
+    <div className="space-y-4">
+      <TestSendTab state={state} reload={reload} />
+      <LogsTab state={state} reload={reload} />
+      <ReviewTab state={state} />
     </div>
   )
 }

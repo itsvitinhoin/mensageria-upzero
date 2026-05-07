@@ -18,9 +18,16 @@ export async function POST(req: NextRequest) {
     phone?: string
     countryCode?: string
     email?: string
+    document?: string
+    customerType?: Contact['customerType']
+    state?: string
+    city?: string
     tags?: string[]
     source?: string
     optInWhatsapp?: boolean
+    totalSpent?: number
+    orderCount?: number
+    lastPurchaseAt?: string
     contactIds?: string[]
     filters?: ContactList['filters']
     description?: string
@@ -37,10 +44,17 @@ export async function POST(req: NextRequest) {
       phone: normalizedPhone,
       countryCode: body.countryCode ?? normalizedPhone.slice(0, 2),
       email: body.email,
+      document: body.document,
+      customerType: body.customerType,
       tags: body.tags ?? [],
       source: body.source,
-      status: 'active',
+      status: body.phone && body.optInWhatsapp ? 'active' : 'incomplete',
       optInWhatsapp: Boolean(body.optInWhatsapp),
+      state: body.state,
+      city: body.city,
+      totalSpent: Number(body.totalSpent ?? 0),
+      orderCount: Number(body.orderCount ?? 0),
+      lastPurchaseAt: body.lastPurchaseAt,
       createdAt: now,
       updatedAt: now,
     }

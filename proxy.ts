@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 const PUBLIC_MENSAGERIA_API_PREFIXES = [
   '/api/mensageria/webhook',
+  '/api/mensageria/events/ecommerce',
   '/api/mensageria/oauth/callback',
 ]
 
