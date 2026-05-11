@@ -294,3 +294,7 @@ export async function sendTextMessage(input: {
     },
   })
 }
+
+export async function subscribeWabaToApp(wabaId: string): Promise<MetaCallResult<{ success?: boolean }>> {
+  return graphPost<{ success?: boolean }>(`/${wabaId}/subscribed_apps`, {})
+}

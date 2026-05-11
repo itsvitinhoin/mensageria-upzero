@@ -90,6 +90,7 @@ export interface WhatsAppIntegration {
   selectedTemplateId?: string
   lastSyncAt?: string
   webhookVerifiedAt?: string
+  webhookSubscribedAt?: string
   lastTestMessageId?: string
   lastError?: SafeError
   alert?: string

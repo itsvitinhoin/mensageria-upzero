@@ -1119,7 +1119,7 @@ function ContactCard({ contact }: { contact: Contact }) {
 function DiagnosticsTab({ state, reload }: { state: UiState; reload: () => Promise<void> }) {
   return (
     <div className="space-y-4">
-      <WebhookSetupPanel state={state} />
+      <WebhookSetupPanel state={state} reload={reload} />
       <TestSendTab state={state} reload={reload} />
       <LogsTab state={state} reload={reload} />
       <ReviewTab state={state} />
@@ -1127,12 +1127,36 @@ function DiagnosticsTab({ state, reload }: { state: UiState; reload: () => Promi
   )
 }
 
-function WebhookSetupPanel({ state }: { state: UiState }) {
+function WebhookSetupPanel({ state, reload }: { state: UiState; reload: () => Promise<void> }) {
   const [origin, setOrigin] = useState('')
+  const [subscribing, setSubscribing] = useState(false)
+  const [subscribeResult, setSubscribeResult] = useState<{ ok: boolean; message: string; action?: string } | null>(null)
 
   useEffect(() => {
     setOrigin(window.location.origin)
   }, [])
+
+  async function subscribeWaba() {
+    setSubscribing(true)
+    setSubscribeResult(null)
+    try {
+      const response = await api<{ ok?: boolean; error?: string | { message?: string; action?: string } }>('/api/mensageria/connections/subscribe-webhook', { method: 'POST' })
+      if (response.ok) {
+        setSubscribeResult({ ok: true, message: 'WABA inscrita no app para eventos de webhook.' })
+      } else {
+        setSubscribeResult({
+          ok: false,
+          message: typeof response.error === 'string' ? response.error : response.error?.message ?? 'Nao foi possivel inscrever a WABA.',
+          action: typeof response.error === 'object' ? response.error?.action : undefined,
+        })
+      }
+      await reload()
+    } catch (error) {
+      setSubscribeResult({ ok: false, message: error instanceof Error ? error.message : 'Nao foi possivel inscrever a WABA.' })
+    } finally {
+      setSubscribing(false)
+    }
+  }
 
   const callbackUrl = origin ? `${origin}/api/mensageria/webhook` : '/api/mensageria/webhook'
   const inboundCount = state.conversations.reduce((total, conversation) => total + conversation.messages.filter((message) => message.direction === 'inbound').length, 0)
@@ -1145,6 +1169,21 @@ function WebhookSetupPanel({ state }: { state: UiState }) {
           <ReadOnlyInfo label="Callback URL" value={callbackUrl} status={state.integration.webhookVerifiedAt ? 'success' : 'needs_attention'} />
           <ReadOnlyInfo label="Verify token" value="WHATSAPP_WEBHOOK_VERIFY_TOKEN (valor fica somente no servidor)" status={state.integration.webhookVerifiedAt ? 'success' : 'needs_attention'} />
           <ReadOnlyInfo label="Campo inscrito na Meta" value="messages" status={inboundCount > 0 ? 'success' : 'needs_attention'} />
+          <ReadOnlyInfo label="WABA inscrita no app" value={state.integration.webhookSubscribedAt ? new Date(state.integration.webhookSubscribedAt).toLocaleString('pt-BR') : 'Ainda nao inscrita por este painel'} status={state.integration.webhookSubscribedAt ? 'success' : 'needs_attention'} />
+          <Button type="button" variant="outline" onClick={subscribeWaba} disabled={subscribing || !state.integration.wabaId} className="gap-2">
+            {subscribing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+            Inscrever WABA no app
+          </Button>
+          {subscribeResult ? (
+            <Alert className={subscribeResult.ok ? statusClass.success : statusClass.failed}>
+              {subscribeResult.ok ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+              <AlertTitle>{subscribeResult.ok ? 'WABA inscrita' : 'Inscricao falhou'}</AlertTitle>
+              <AlertDescription>
+                {subscribeResult.message}
+                {!subscribeResult.ok && subscribeResult.action ? <span className="mt-2 block">{subscribeResult.action}</span> : null}
+              </AlertDescription>
+            </Alert>
+          ) : null}
         </div>
         <div className="rounded-lg border border-border/60 bg-muted/25 p-3 text-sm">
           <div className="flex flex-wrap items-center gap-2">
