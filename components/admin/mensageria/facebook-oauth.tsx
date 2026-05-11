@@ -81,6 +81,10 @@ interface EmbeddedSignupMessage {
   version?: string
 }
 
+interface FacebookPermissionResponse {
+  data?: Array<{ permission?: string; status?: string }>
+}
+
 // ─── Public types ─────────────────────────────────────────────────────────────
 
 export interface WaOAuthCredentials {
@@ -111,6 +115,10 @@ interface Props {
 }
 
 type FlowStep = 'no-config' | 'ready' | 'authenticating' | 'verifying' | 'phone-pending' | 'migration' | 'error'
+
+function uniquePermissions(...groups: Array<Array<string | undefined> | undefined>) {
+  return Array.from(new Set(groups.flatMap((group) => group ?? []).filter(Boolean) as string[]))
+}
 
 export function FacebookOAuthButton({ onSuccess, isReconnect = false, className }: Props) {
   const appId = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID
@@ -213,9 +221,27 @@ export function FacebookOAuthButton({ onSuccess, isReconnect = false, className 
   }, [appId, step])
 
   // ── Server-side WABA verification ────────────────────────────────────────
-  async function verifyWithServer(code: string | null, info: SessionInfo) {
+  async function fetchClientGrantedPermissions(accessToken: string | null) {
+    if (!accessToken) return [] as string[]
+    try {
+      const response = await fetch(`https://graph.facebook.com/v19.0/me/permissions?access_token=${encodeURIComponent(accessToken)}`)
+      const data = await response.json() as FacebookPermissionResponse
+      return (data.data ?? []).filter((item) => item.status === 'granted' && item.permission).map((item) => item.permission!)
+    } catch (error) {
+      console.warn('[FacebookOAuth] could not fetch /me/permissions:', error)
+      return [] as string[]
+    }
+  }
+
+  async function verifyWithServer(code: string | null, info: SessionInfo, clientAccessToken: string | null) {
     setStep('verifying')
     setVerifyResult(null)
+    const clientGrantedPermissions = await fetchClientGrantedPermissions(clientAccessToken)
+    if (clientGrantedPermissions.length > 0) {
+      addStep(7, 'Permissoes do usuario lidas', 'info', {
+        permissions: clientGrantedPermissions.join(', '),
+      })
+    }
 
     // Step 7: Calling server
     addStep(7, 'Verificação no servidor iniciada', 'info', {
@@ -291,7 +317,7 @@ export function FacebookOAuthButton({ onSuccess, isReconnect = false, className 
             verifiedName: result.confirmedWaba?.name ?? '',
           businessId: info.business_id,
           onboardingType: 'new_number',
-          grantedPermissions: result.tokenDiag?.grantedScopes ?? [],
+          grantedPermissions: uniquePermissions(result.tokenDiag?.grantedScopes, clientGrantedPermissions),
         })
           setStep('phone-pending')
           return
@@ -318,7 +344,7 @@ export function FacebookOAuthButton({ onSuccess, isReconnect = false, className 
           businessId: info.business_id,
           onboardingType,
           platformType: result.phoneDetails?.platformType,
-          grantedPermissions: result.tokenDiag?.grantedScopes ?? [],
+          grantedPermissions: uniquePermissions(result.tokenDiag?.grantedScopes, clientGrantedPermissions),
         }
 
         if (onboardingType === 'existing_app_number' || onboardingType === 'migration_required') {
@@ -457,7 +483,7 @@ export function FacebookOAuthButton({ onSuccess, isReconnect = false, className 
 
           // Proceed to server verification even if phone_number_id is missing —
           // the server will confirm the WABA and return phoneNumberPending: true
-          void verifyWithServer(code, info)
+          void verifyWithServer(code, info, response.authResponse.accessToken ?? null)
         } else {
           console.log('[FacebookOAuth] login cancelled or denied')
           setStep('ready')

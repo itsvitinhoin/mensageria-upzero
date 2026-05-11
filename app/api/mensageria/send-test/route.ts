@@ -7,8 +7,12 @@ export const dynamic = 'force-dynamic'
 
 function recommendedSendAction(error?: { message?: string; action?: string } | string): string {
   const message = typeof error === 'string' ? error : error?.message ?? ''
-  if (/recipient|allowed|phone number list|not.*registered|not.*valid|not.*whatsapp/i.test(message)) {
-    return 'If you are using the Meta test sender number, add and verify this recipient in Meta Developers > WhatsApp > API Setup > Manage phone number list. For unrestricted real recipients, connect a real WhatsApp Business phone number in the WABA and use an approved template with opt-in.'
+  if (/133010|account not registered/i.test(message)) {
+    return 'Register the selected WhatsApp phone number for Cloud API with POST /{phone_number_id}/register, then click Atualizar Meta, reselect the phone number and try again.'
+  }
+
+  if (/131030|recipient|allowed|phone number list|not.*valid|not.*whatsapp/i.test(message)) {
+    return 'If you are using the Meta test sender number, add and verify this recipient in Meta Developers > WhatsApp > API Setup > Manage phone number list. For unrestricted real recipients, use a registered real WhatsApp Business phone number, approved template and opt-in.'
   }
 
   return typeof error === 'object' && error?.action

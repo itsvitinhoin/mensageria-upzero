@@ -329,6 +329,19 @@ export function addInboxMessage(message: InboxMessage): WhatsAppState {
   })
 }
 
+export function updateInboxMessageStatus(metaMessageId: string, status: InboxMessage['status'], error?: unknown): WhatsAppState {
+  return updateState((state) => {
+    for (const conversation of state.conversations) {
+      const message = conversation.messages.find((item) => item.metaMessageId === metaMessageId)
+      if (message) {
+        message.status = status
+        if (error) message.error = sanitizeError(error)
+        conversation.lastMessageAt = new Date().toISOString()
+      }
+    }
+  })
+}
+
 export function updateIntegration(patch: Partial<WhatsAppIntegration>): WhatsAppState {
   return updateState((state) => {
     const next = { ...state.integration, ...patch, updatedAt: nowIso() }

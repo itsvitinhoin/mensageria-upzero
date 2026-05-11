@@ -1088,10 +1088,48 @@ function ContactCard({ contact }: { contact: Contact }) {
 function DiagnosticsTab({ state, reload }: { state: UiState; reload: () => Promise<void> }) {
   return (
     <div className="space-y-4">
+      <WebhookSetupPanel state={state} />
       <TestSendTab state={state} reload={reload} />
       <LogsTab state={state} reload={reload} />
       <ReviewTab state={state} />
     </div>
+  )
+}
+
+function WebhookSetupPanel({ state }: { state: UiState }) {
+  const [origin, setOrigin] = useState('')
+
+  useEffect(() => {
+    setOrigin(window.location.origin)
+  }, [])
+
+  const callbackUrl = origin ? `${origin}/api/mensageria/webhook` : '/api/mensageria/webhook'
+  const inboundCount = state.conversations.reduce((total, conversation) => total + conversation.messages.filter((message) => message.direction === 'inbound').length, 0)
+  const latestWebhookLog = state.logs.find((log) => log.type === 'webhook_received' || log.type === 'inbox_updated')
+
+  return (
+    <AdminPanel title="Recebimento via Webhook Meta" description="Configure este callback no app da Meta para receber mensagens, entregas, leituras e falhas dentro da Inbox.">
+      <div className="grid gap-3 lg:grid-cols-[1fr_0.9fr]">
+        <div className="space-y-3">
+          <ReadOnlyInfo label="Callback URL" value={callbackUrl} status={state.integration.webhookVerifiedAt ? 'success' : 'needs_attention'} />
+          <ReadOnlyInfo label="Verify token" value="WHATSAPP_WEBHOOK_VERIFY_TOKEN (valor fica somente no servidor)" status={state.integration.webhookVerifiedAt ? 'success' : 'needs_attention'} />
+          <ReadOnlyInfo label="Campo inscrito na Meta" value="messages" status={inboundCount > 0 ? 'success' : 'needs_attention'} />
+        </div>
+        <div className="rounded-lg border border-border/60 bg-muted/25 p-3 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusPill status={state.integration.webhookVerifiedAt ? 'success' : 'needs_attention'} />
+            <span className="font-semibold">Status do webhook</span>
+          </div>
+          <p className="mt-2 text-muted-foreground">
+            {state.integration.webhookVerifiedAt
+              ? `Verificado em ${new Date(state.integration.webhookVerifiedAt).toLocaleString('pt-BR')}.`
+              : 'Ainda nao verificado pela Meta. Configure a URL, o verify token e assine o campo messages.'}
+          </p>
+          <p className="mt-2 text-muted-foreground">Mensagens recebidas: {inboundCount}</p>
+          {latestWebhookLog ? <p className="mt-2 text-xs text-muted-foreground">Ultimo evento: {latestWebhookLog.description}</p> : null}
+        </div>
+      </div>
+    </AdminPanel>
   )
 }
 

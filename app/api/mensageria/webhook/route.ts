@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { addInboxMessage, addLog, createId, maskId, maskPhone, updateIntegration } from '@/lib/whatsapp/store'
+import { addInboxMessage, addLog, createId, maskId, maskPhone, updateInboxMessageStatus, updateIntegration } from '@/lib/whatsapp/store'
+import type { MessageStatus } from '@/lib/whatsapp/types'
 
 export const dynamic = 'force-dynamic'
+
+function normalizeMetaStatus(status: string): MessageStatus {
+  if (status === 'sent' || status === 'delivered' || status === 'read' || status === 'failed') return status
+  return 'queued'
+}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -64,6 +70,7 @@ export async function POST(req: NextRequest) {
 
         for (const status of value?.statuses ?? []) {
           statusCount += 1
+          updateInboxMessageStatus(status.id, normalizeMetaStatus(status.status), status.errors?.[0])
           addLog({
             type: 'webhook_received',
             status: status.status === 'failed' ? 'failed' : 'info',
