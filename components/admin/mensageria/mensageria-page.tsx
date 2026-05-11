@@ -662,18 +662,37 @@ function InboxTab({ state, reload }: { state: UiState; reload: () => Promise<voi
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState(state.conversations[0]?.id ?? '')
   const [reply, setReply] = useState('')
+  const [replyResult, setReplyResult] = useState<{ ok: boolean; message?: string; action?: string; messageId?: string } | null>(null)
+  const [sendingReply, setSendingReply] = useState(false)
   const conversations = state.conversations.filter((conversation) => conversation.maskedPhone.includes(query) || conversation.messages.some((message) => message.text.toLowerCase().includes(query.toLowerCase())))
   const selected = state.conversations.find((conversation) => conversation.id === selectedId) ?? conversations[0]
 
   async function queueReply() {
     if (!selected || !reply.trim()) return
-    await api('/api/mensageria/inbox', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conversationId: selected.id, text: reply }),
-    })
-    setReply('')
-    await reload()
+    setSendingReply(true)
+    setReplyResult(null)
+    try {
+      const response = await api<{ ok?: boolean; messageId?: string; error?: string | { message?: string; action?: string } }>('/api/mensageria/inbox', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId: selected.id, text: reply }),
+      })
+      if (response.ok) {
+        setReplyResult({ ok: true, message: 'Resposta enviada pela Cloud API.', messageId: response.messageId })
+        setReply('')
+      } else {
+        setReplyResult({
+          ok: false,
+          message: typeof response.error === 'string' ? response.error : response.error?.message ?? 'Nao foi possivel enviar a resposta.',
+          action: typeof response.error === 'object' ? response.error?.action : undefined,
+        })
+      }
+      await reload()
+    } catch (error) {
+      setReplyResult({ ok: false, message: error instanceof Error ? error.message : 'Nao foi possivel enviar a resposta.' })
+    } finally {
+      setSendingReply(false)
+    }
   }
 
   return (
@@ -713,9 +732,21 @@ function InboxTab({ state, reload }: { state: UiState; reload: () => Promise<voi
                 </div>
               ))}
             </div>
+            {replyResult ? (
+              <Alert className={replyResult.ok ? statusClass.success : statusClass.failed}>
+                {replyResult.ok ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                <AlertTitle>{replyResult.ok ? 'Resposta enviada' : 'Resposta nao enviada'}</AlertTitle>
+                <AlertDescription>
+                  {replyResult.ok && replyResult.messageId ? `Message ID: ${mask(replyResult.messageId)}` : replyResult.message}
+                  {!replyResult.ok && replyResult.action ? <span className="mt-2 block">{replyResult.action}</span> : null}
+                </AlertDescription>
+              </Alert>
+            ) : null}
             <div className="flex gap-2">
               <Input value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Responder quando permitido pela janela de 24h" />
-              <Button onClick={queueReply}>Responder</Button>
+              <Button onClick={queueReply} disabled={sendingReply || !reply.trim()}>
+                {sendingReply ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Responder'}
+              </Button>
             </div>
             <ContextLogs logs={state.logs} types={['webhook_received', 'inbox_updated']} />
           </div>

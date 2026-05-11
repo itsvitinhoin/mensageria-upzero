@@ -277,3 +277,20 @@ export async function sendTemplateMessage(input: {
     },
   })
 }
+
+export async function sendTextMessage(input: {
+  phoneNumberId: string
+  to: string
+  text: string
+}): Promise<MetaCallResult<{ messages?: { id: string }[] }>> {
+  return graphPost<{ messages?: { id: string }[] }>(`/${input.phoneNumberId}/messages`, {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: input.to.replace(/\D/g, ''),
+    type: 'text',
+    text: {
+      preview_url: false,
+      body: input.text,
+    },
+  })
+}
